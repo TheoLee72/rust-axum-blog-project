@@ -1,0 +1,33 @@
+[package]
+name = "blog_backend"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+argon2 = "0.5.3"
+axum = { version = "0.8.4", features = ["macros"] }
+axum-extra = { version = "0.10.1", features = ["cookie"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+dotenv = "0.15.0"
+html2text = "0.15.5"
+jsonwebtoken = "9.3.1"
+lettre = "0.11.18"
+pgvector = { version = "0.4.1", features = ["sqlx"] }
+prost = "0.14.1"
+redis = { version = "0.32.6", features = ["tokio-comp", "connection-manager", "aio"] }
+reqwest = { version = "0.12.23", features = ["json"] }
+serde = { version = "1.0.227", features = ["derive"] }
+serde_json = "1.0.145"
+sqlx = { version = "0.8.6", features = ["runtime-async-std-native-tls", "postgres", "chrono", "uuid"] }
+time = "0.3.44"
+tokio = { version = "1.47.1", features = ["full"] }
+tonic = "0.14.2"
+tonic-prost = "0.14.2"
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["cors", "trace"] }
+tracing-subscriber = "0.3.20"
+uuid = { version = "1.18.1", features = ["serde", "v4"] }
+validator = { version = "0.20.0", features = ["derive"] }
+
+[build-dependencies]
+tonic-prost-build = "0.14.2"

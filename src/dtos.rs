@@ -116,15 +116,7 @@ pub struct NameUpdateDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RoleUpdateDto {
-    #[validate(custom(function = "validate_user_role"))]
     pub role: UserRole,
-}
-
-fn validate_user_role(role: &UserRole) -> Result<(), validator::ValidationError> {
-    match role {
-        UserRole::Admin | UserRole::User => Ok(()),
-        _ => Err(validator::ValidationError::new("invalid_role")),
-    }
 }
 
 #[derive(Debug, Validate, Default, Clone, Serialize, Deserialize)]

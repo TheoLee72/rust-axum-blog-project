@@ -37,7 +37,6 @@ pub enum ErrorMessage {
     InvalidHashFormat,
     HashingError,
     InvalidToken,
-    ServerError,
     WrongCredentials,
     EmailExist,
     UserNoLongerExist,
@@ -49,7 +48,6 @@ pub enum ErrorMessage {
 impl ToString for ErrorMessage {
     fn to_string(&self) -> String {
         match self {
-            ErrorMessage::ServerError => "Server Error. Please try again later".to_string(),
             ErrorMessage::WrongCredentials => "Email or password is wrong".to_string(),
             ErrorMessage::EmailExist => "A user with this email already exists".to_string(),
             ErrorMessage::UserNoLongerExist => "User belonging to this token no longer exists".to_string(),

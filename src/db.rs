@@ -339,8 +339,6 @@ pub trait PostExt {
         content: &str,
         title: &str,
         raw_text: &str,
-        summary: &str,
-        embedding: Vec<f32>,
     ) -> Result<PostDto, sqlx::Error>;
 
     async fn delete_post(
@@ -360,6 +358,12 @@ pub trait PostExt {
         embedding: Vec<f32>,
     ) -> Result<Vec<PostPaginationDto>, sqlx::Error>;
 
+    async fn update_post_summary_and_embedding(
+        &self,
+        post_id: i32,
+        summary: &str,
+        embedding: Vec<f32>,
+    ) -> Result<(), sqlx::Error>;
 }
 
 impl PostExt for DBClient{
@@ -460,17 +464,14 @@ impl PostExt for DBClient{
         content: &str,
         title: &str,
         raw_text: &str,
-        summary: &str,
-        embedding: Vec<f32>,
     ) -> Result<PostDto, sqlx::Error> {
-        let embedding = Vector::from(embedding);
         let post = sqlx::query_as!(
             PostDto,
             r#"
             WITH updated_post AS (
                 UPDATE post
-                SET content = $1, title = $2, raw_text = $3, summary = $4, embedding = $5::vector, updated_at = NOW()
-                WHERE id = $6 AND user_id = $7
+                SET content = $1, title = $2, raw_text = $3, updated_at = NOW()
+                WHERE id = $4 AND user_id = $5
                 RETURNING *
             )
             SELECT
@@ -487,8 +488,6 @@ impl PostExt for DBClient{
             content,
             title,
             raw_text,
-            summary,
-            embedding as _,
             post_id,
             user_id
         )
@@ -560,6 +559,29 @@ impl PostExt for DBClient{
         .await?;
 
         Ok(posts)
+    }
+
+    async fn update_post_summary_and_embedding(
+        &self,
+        post_id: i32,
+        summary: &str,
+        embedding: Vec<f32>,
+    ) -> Result<(), sqlx::Error> {
+        let embedding = Vector::from(embedding);
+        sqlx::query!(
+            r#"
+            UPDATE post
+            SET summary = $1, embedding = $2::vector, updated_at = NOW()
+            WHERE id = $3
+            "#,
+            summary,
+            embedding as _,
+            post_id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 
 }

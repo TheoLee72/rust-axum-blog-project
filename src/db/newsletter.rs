@@ -1,5 +1,4 @@
 use crate::models::NewsletterEmail;
-use uuid::Uuid;
 
 use super::DBClient;
 

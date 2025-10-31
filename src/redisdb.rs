@@ -1,6 +1,6 @@
 use std::net::IpAddr;
 
-use redis::{AsyncCommands, Commands, aio::ConnectionManager};
+use redis::{AsyncCommands, aio::ConnectionManager};
 #[derive(Clone)]
 pub struct RedisClient {
     pub conn: ConnectionManager,

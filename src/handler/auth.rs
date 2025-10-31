@@ -13,12 +13,11 @@ use axum::{
     Json, Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Redirect},
+    response::IntoResponse,
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use chrono::{Duration, Utc};
-use sqlx::query;
 use validator::Validate;
 
 use axum_client_ip::ClientIp;
@@ -106,7 +105,7 @@ pub async fn login(
         .redis_client
         .get_ip_attempts(ip)
         .await
-        .map_err(|e| HttpError::server_error("Login failed"))?
+        .map_err(|_| HttpError::server_error("Login failed"))?
         .unwrap_or(0);
     if ip_attempts >= 100 {
         return Err(HttpError::server_error("Login failed"));
@@ -116,7 +115,7 @@ pub async fn login(
         .redis_client
         .get_identifier_ip_attempts(ip, &body.identifier)
         .await
-        .map_err(|e| HttpError::server_error("Login failed"))?
+        .map_err(|_| HttpError::server_error("Login failed"))?
         .unwrap_or(0);
 
     if identifier_ip_attempts >= 10 {
@@ -153,19 +152,19 @@ async fn authenticate_process(
 ) -> Result<impl IntoResponse + use<>, HttpError> {
     //Here, we had lifetime problem.
     body.validate()
-        .map_err(|e| HttpError::server_error("Login failed"))?;
+        .map_err(|_| HttpError::server_error("Login failed"))?;
     let result = if body.identifier.contains('@') {
         app_state
             .db_client
             .get_user(None, None, Some(&body.identifier), None)
             .await
-            .map_err(|e| HttpError::server_error("Login failed"))?
+            .map_err(|_| HttpError::server_error("Login failed"))?
     } else {
         app_state
             .db_client
             .get_user(None, Some(&body.identifier), None, None)
             .await
-            .map_err(|e| HttpError::server_error("Login failed"))?
+            .map_err(|_| HttpError::server_error("Login failed"))?
     };
 
     let user = result.ok_or(HttpError::server_error("Login failed"))?;
@@ -180,7 +179,7 @@ async fn authenticate_process(
             &app_state.env.jwt_secret.as_bytes(),
             app_state.env.jwt_maxage,
         )
-        .map_err(|e| HttpError::server_error("Login failed"))?;
+        .map_err(|_| HttpError::server_error("Login failed"))?;
 
         let access_cookie = Cookie::build(("access_token", access_token.clone()))
             .path("/")
@@ -200,7 +199,7 @@ async fn authenticate_process(
             &app_state.env.jwt_secret.as_bytes(),
             app_state.env.refresh_token_maxage,
         )
-        .map_err(|e| HttpError::server_error("Login failed"))?;
+        .map_err(|_| HttpError::server_error("Login failed"))?;
 
         let refresh_cookie = Cookie::build(("refresh_token", &refresh_token))
             .path("/")
@@ -229,7 +228,7 @@ async fn authenticate_process(
                 app_state.env.refresh_token_maxage,
             )
             .await
-            .map_err(|e| HttpError::server_error("Login failed"))?;
+            .map_err(|_| HttpError::server_error("Login failed"))?;
 
         let mut response = response.into_response();
         response.headers_mut().extend(headers);

@@ -6,7 +6,7 @@ use uuid::Uuid;
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 pub enum UserRole {
     Admin,
-    User
+    User,
 }
 
 impl UserRole {
@@ -46,7 +46,7 @@ pub struct Post {
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow, Clone)]
-pub struct comment {
+pub struct Comment {
     pub id: i64,
     pub user_id: Uuid,
     pub post_id: i64,

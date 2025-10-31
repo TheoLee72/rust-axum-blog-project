@@ -12,8 +12,7 @@ use validator::Validate;
 
 use crate::db::CommentExt;
 use crate::dtos::{EmailUpdateDto, UserMeData};
-use crate::mail::mails::{send_verification_email, send_verification_email_newemail};
-use crate::utils::token;
+use crate::mail::mails::send_verification_email_newemail;
 use crate::{
     AppState,
     db::PostExt,

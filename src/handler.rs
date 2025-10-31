@@ -1,5 +1,7 @@
 pub mod auth;
 pub mod users;
+
+pub mod newsletter;
 pub mod post;
-pub mod review;
+pub mod comment;
 pub mod search;

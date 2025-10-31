@@ -46,11 +46,18 @@ pub struct Post {
 }
 
 #[derive(Debug, Deserialize, Serialize, sqlx::FromRow, Clone)]
-pub struct Review {
+pub struct comment {
     pub id: i64,
     pub user_id: Uuid,
     pub post_id: i64,
     pub content: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Serialize, sqlx::FromRow, Clone)]
+pub struct NewsletterEmail {
+    pub id: Uuid,
+    pub email: String,
+    pub created_at: DateTime<Utc>,
 }

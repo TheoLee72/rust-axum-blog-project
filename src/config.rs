@@ -24,6 +24,7 @@ impl Config {
         let model_name = std::env::var("MODEL_NAME").expect("MODEL_NAME must be set");
         let grpc_url = std::env::var("GRPC_URL").expect("GRPC_URL must be set");
         let frontend_url = std::env::var("FRONTEND_URL").expect("FRONTEND_URL must be set");
+        let port = std::env::var("PORT").expect("PORT must be set").parse::<u16>().expect("PORT must be number");
 
         Config {
             database_url,
@@ -31,7 +32,7 @@ impl Config {
             jwt_maxage: jwt_maxage.parse::<i64>().unwrap(),
             refresh_token_maxage: refresh_token_maxage.parse::<i64>().unwrap(),
             redis_url,
-            port: 8000,
+            port,
             llm_url,
             model_name,
             grpc_url,

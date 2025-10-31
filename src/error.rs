@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -14,7 +14,7 @@ pub struct ErrorResponse {
 
 impl fmt::Display for ErrorResponse {
     //{}에 어떻게 보여질지 정하는 것
-    //serde_json::to_string하면 struct를 json 직렬화하는 것처럼 만들어줌. 
+    //serde_json::to_string하면 struct를 json 직렬화하는 것처럼 만들어줌.
     //f가 println!하기 전 버퍼라는데
     //버퍼에 써야하니까 &mut
 
@@ -24,9 +24,8 @@ impl fmt::Display for ErrorResponse {
         //write!(f, "{}", serde_json::to_string(self).unwrap())
         match serde_json::to_string(self) {
             Ok(s) => write!(f, "{}", s),
-            Err(_) => Err(fmt::Error)
+            Err(_) => Err(fmt::Error),
         }
-
     }
 }
 
@@ -50,21 +49,30 @@ impl ToString for ErrorMessage {
         match self {
             ErrorMessage::WrongCredentials => "Email or password is wrong".to_string(),
             ErrorMessage::EmailExist => "A user with this email already exists".to_string(),
-            ErrorMessage::UserNoLongerExist => "User belonging to this token no longer exists".to_string(),
+            ErrorMessage::UserNoLongerExist => {
+                "User belonging to this token no longer exists".to_string()
+            }
             ErrorMessage::EmptyPassword => "Password cannot be empty".to_string(),
             ErrorMessage::HashingError => "Error while hashing password".to_string(),
             ErrorMessage::InvalidHashFormat => "Invalid password hash format".to_string(),
-            ErrorMessage::ExceededMaxPasswordLength(max_length) => format!("Password must not be more than {} characters", max_length),
+            ErrorMessage::ExceededMaxPasswordLength(max_length) => {
+                format!("Password must not be more than {} characters", max_length)
+            }
             ErrorMessage::InvalidToken => "Authentication token is invalid or expired".to_string(),
-            ErrorMessage::TokenNotProvided => "You are not logged in, please provide a token".to_string(),
-            ErrorMessage::PermissionDenied => "You are not allowed to perform this action".to_string(),
-            ErrorMessage::UserNotAuthenticated => "Authentication required. Please log in.".to_string(),
+            ErrorMessage::TokenNotProvided => {
+                "You are not logged in, please provide a token".to_string()
+            }
+            ErrorMessage::PermissionDenied => {
+                "You are not allowed to perform this action".to_string()
+            }
+            ErrorMessage::UserNotAuthenticated => {
+                "Authentication required. Please log in.".to_string()
+            }
         }
     }
 }
 
-
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct HttpError {
     pub message: String,
     pub status: StatusCode,
@@ -72,8 +80,8 @@ pub struct HttpError {
 //이건 내부에서 쓰는 errortype
 
 impl HttpError {
-    //Into<String>은 string으로 바뀔 수 있는 type 다 받는다는 거임. 
-    //from이랑 into가 보통 같이 쌍으로 다님. 
+    //Into<String>은 string으로 바뀔 수 있는 type 다 받는다는 거임.
+    //from이랑 into가 보통 같이 쌍으로 다님.
     pub fn new(message: impl Into<String>, status: StatusCode) -> Self {
         HttpError {
             message: message.into(),
@@ -96,9 +104,9 @@ impl HttpError {
     }
 
     pub fn unique_constraint_violation(message: impl Into<String>) -> Self {
-        HttpError { 
-            message: message.into(), 
-            status: StatusCode::CONFLICT 
+        HttpError {
+            message: message.into(),
+            status: StatusCode::CONFLICT,
         }
     }
 
@@ -106,6 +114,13 @@ impl HttpError {
         HttpError {
             message: message.into(),
             status: StatusCode::UNAUTHORIZED,
+        }
+    }
+
+    pub fn not_found(message: impl Into<String>) -> Self {
+        HttpError {
+            message: message.into(),
+            status: StatusCode::NOT_FOUND,
         }
     }
 
@@ -132,7 +147,7 @@ impl fmt::Display for HttpError {
 //그런데 왜 errorresponse는 안했냐? -> 이건 client에 응답을 보내는 용도이기 때문에.
 
 impl std::error::Error for HttpError {}
-//이 type을 http 응답으로 바꿀 수 있다. 
+//이 type을 http 응답으로 바꿀 수 있다.
 impl IntoResponse for HttpError {
     fn into_response(self) -> Response {
         self.into_http_response()

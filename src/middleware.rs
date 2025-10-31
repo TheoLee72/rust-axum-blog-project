@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     middleware::Next,
     response::IntoResponse,
 };
@@ -9,11 +9,11 @@ use axum_extra::extract::cookie::CookieJar;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    AppState,
     db::UserExt,
     error::{ErrorMessage, HttpError},
     models::{User, UserRole},
     utils::token,
-    AppState
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -28,56 +28,51 @@ pub async fn auth(
     next: Next,
 ) -> Result<impl IntoResponse, HttpError> {
     let cookies = cookie_jar
-            .get("access_token")
-            .map(|cookie| cookie.value().to_string())
-            .or_else(|| {
-                req.headers()
-                    .get(header::AUTHORIZATION)
-                    .and_then(|auth_header| auth_header.to_str().ok())//.ok()는 Result를 Option으로 바꿈.
-                    .and_then(|auth_value| {
-                        if auth_value.starts_with("Bearer ") {
-                            Some(auth_value[7..].to_owned())
-                        } else {
-                            None
-                        }
-                    })  
-            });
+        .get("access_token")
+        .map(|cookie| cookie.value().to_string())
+        .or_else(|| {
+            req.headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|auth_header| auth_header.to_str().ok()) //.ok()는 Result를 Option으로 바꿈.
+                .and_then(|auth_value| {
+                    if auth_value.starts_with("Bearer ") {
+                        Some(auth_value[7..].to_owned())
+                    } else {
+                        None
+                    }
+                })
+        });
 
     let token = cookies.ok_or_else(|| {
-        HttpError::unauthorized(ErrorMessage::TokenNotProvided.to_string())//.ok_or_else는 Option을 Result로 바꿈.
+        HttpError::unauthorized(ErrorMessage::TokenNotProvided.to_string()) //.ok_or_else는 Option을 Result로 바꿈.
     })?;
 
-    let token_details = 
-        match token::decode_token(token, app_state.env.jwt_secret.as_bytes()) {
-            Ok(token_details) => token_details,
-            Err(_) => {
-                return Err(HttpError::unauthorized(ErrorMessage::InvalidToken.to_string()));
-            }
-        };
+    let token_details = match token::decode_token(token, app_state.env.jwt_secret.as_bytes()) {
+        Ok(token_details) => token_details,
+        Err(_) => {
+            return Err(HttpError::unauthorized(
+                ErrorMessage::InvalidToken.to_string(),
+            ));
+        }
+    };
 
     let user_id = uuid::Uuid::parse_str(&token_details.to_string())
-            .map_err(|_| {
-                HttpError::unauthorized(ErrorMessage::InvalidToken.to_string())
-            })?;
+        .map_err(|_| HttpError::unauthorized(ErrorMessage::InvalidToken.to_string()))?;
 
-    let user = app_state.db_client.get_user(Some(user_id), None, None, None)//user_id로만 찾겠다.
-            .await
-            .map_err(|_| {
-                HttpError::unauthorized(ErrorMessage::UserNoLongerExist.to_string())
-            })?;
+    let user = app_state
+        .db_client
+        .get_user(Some(user_id), None, None, None) //user_id로만 찾겠다.
+        .await
+        .map_err(|_| HttpError::unauthorized(ErrorMessage::UserNoLongerExist.to_string()))?;
 
-    let user = user.ok_or_else(|| {
-        HttpError::unauthorized(ErrorMessage::UserNoLongerExist.to_string())
-    })?;
+    let user =
+        user.ok_or_else(|| HttpError::unauthorized(ErrorMessage::UserNoLongerExist.to_string()))?;
 
-    req.extensions_mut().insert(JWTAuthMiddleware {
-        user: user.clone(),
-    });//전역 req.extension에 jwt붙여서 쓸 수 있게 함.
+    req.extensions_mut()
+        .insert(JWTAuthMiddleware { user: user.clone() }); //전역 req.extension에 jwt붙여서 쓸 수 있게 함.
 
     Ok(next.run(req).await)
-
 }
-
 
 pub async fn role_check(
     req: Request,
@@ -85,14 +80,15 @@ pub async fn role_check(
     required_roles: Vec<UserRole>,
 ) -> Result<impl IntoResponse, HttpError> {
     let user = req
-            .extensions()
-            .get::<JWTAuthMiddleware>()
-            .ok_or_else(|| {
-                HttpError::unauthorized(ErrorMessage::UserNotAuthenticated.to_string())
-            })?;
-    
+        .extensions()
+        .get::<JWTAuthMiddleware>()
+        .ok_or_else(|| HttpError::unauthorized(ErrorMessage::UserNotAuthenticated.to_string()))?;
+
     if !required_roles.contains(&user.user.role) {
-        return Err(HttpError::new(ErrorMessage::PermissionDenied.to_string(), StatusCode::FORBIDDEN));
+        return Err(HttpError::new(
+            ErrorMessage::PermissionDenied.to_string(),
+            StatusCode::FORBIDDEN,
+        ));
     }
 
     Ok(next.run(req).await)

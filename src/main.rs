@@ -11,6 +11,7 @@ mod middleware; // Custom middleware (auth, role_check etc.)
 mod models; // Database models representing table structures
 mod redisdb; // Redis client for session storage and managing login attempts
 mod routes; // Route definitions and router configuration
+mod tracing_config; //configuring tracing function
 mod utils; // Utility functions and helpers (password, token)
 
 use axum::http::{
@@ -63,10 +64,8 @@ pub struct AppState {
 #[tokio::main]
 async fn main() {
     // Initialize tracing for structured logging
-    // DEBUG level provides detailed information during development
-    tracing_subscriber::fmt()
-        .with_max_level(LevelFilter::DEBUG)
-        .init();
+    // DEBUG level for log files, INFO level for console
+    let _guard = tracing_config::init_tracing();
 
     // Load environment variables from .env file (if it exists)
     // This is useful for local development

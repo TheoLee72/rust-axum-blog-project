@@ -15,14 +15,20 @@ use axum::routing::{get, post, put};
 use axum::{Router, middleware};
 use validator::Validate;
 
+/// Router for comment endpoints nested under /posts/{post_id}/comments
 pub fn comment_handler(app_state: AppState) -> Router<AppState> {
     Router::new()
+        // GET / - Get comments for a post (public)
+        // Query params: ?page=1&limit=10&sort=created_at_desc
         .route("/", get(get_comments))
+        // POST / - Create comment (requires auth)
         .route(
             "/",
             post(create_comment)
                 .route_layer(middleware::from_fn_with_state(app_state.clone(), auth)),
         )
+        // PUT /{comment_id} - Edit comment (requires auth, user must own comment)
+        // DELETE /{comment_id} - Delete comment (requires auth, user must own comment)
         .route(
             "/{comment_id}",
             put(edit_comment)
@@ -31,11 +37,16 @@ pub fn comment_handler(app_state: AppState) -> Router<AppState> {
         )
 }
 
+/// Get paginated comments for a post
+///
+/// Publicly accessible (no authentication required).
+/// Supports sorting by created_at (desc or asc).
 pub async fn get_comments(
     Query(params): Query<GetcommentsQuery>,
     Path(post_id): Path<i32>,
     State(app_state): State<AppState>,
 ) -> Result<impl IntoResponse, HttpError> {
+    // Validate query parameters (page/limit/sort)
     params
         .validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
@@ -44,12 +55,14 @@ pub async fn get_comments(
     let limit = params.limit.unwrap_or(10);
     let sort = params.sort.unwrap_or("created_at_desc".to_string());
 
+    // Fetch paginated comments
     let comments = app_state
         .db_client
         .get_comments(post_id, page, limit, &sort)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
 
+    // Get total comment count for pagination metadata
     let total = app_state
         .db_client
         .get_post_comment_count(post_id)
@@ -62,8 +75,8 @@ pub async fn get_comments(
         status: "success".to_string(),
         data: comments,
         pagination: PaginationDto {
-            page: page,
-            limit: limit,
+            page,
+            limit,
             total: total as i32,
             total_pages,
         },
@@ -72,38 +85,54 @@ pub async fn get_comments(
     Ok(response)
 }
 
+/// Create comment on a post
+///
+/// Request body: { content }
+/// Returns 201 Created with the new comment.
 pub async fn create_comment(
     Path(post_id): Path<i32>,
     State(app_state): State<AppState>,
     Extension(jwt): Extension<JWTAuthMiddleware>,
     Json(body): Json<InputcommentRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
+    // Validate comment content (1-1000 characters)
     body.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
+
     let user_id = jwt.user.id;
+
+    // Create comment in database
     let comment = app_state
         .db_client
         .create_comment(user_id, post_id, &body.content)
         .await
         .map_err(|e| HttpError::server_error(e.to_string()))?;
+
     let response = Json(SinglecommentResponse {
         status: "success".to_string(),
         data: comment,
     });
+
     Ok((StatusCode::CREATED, response))
 }
 
+/// Edit existing comment
+///
+/// User can only edit their own comments (enforced by database).
+/// Request body: { content }
 pub async fn edit_comment(
     Path(comment_id): Path<i32>,
     State(app_state): State<AppState>,
     Extension(jwt): Extension<JWTAuthMiddleware>,
     Json(body): Json<InputcommentRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
+    // Validate new content
     body.validate()
         .map_err(|e| HttpError::bad_request(e.to_string()))?;
 
     let user_id = jwt.user.id;
 
+    // Update comment (database validates user ownership)
     let comment = app_state
         .db_client
         .edit_comment(user_id, comment_id, &body.content)
@@ -118,6 +147,9 @@ pub async fn edit_comment(
     Ok(response)
 }
 
+/// Delete comment
+///
+/// User can only delete their own comments (enforced by database).
 async fn delete_comment(
     Path(comment_id): Path<i32>,
     State(app_state): State<AppState>,
@@ -125,6 +157,7 @@ async fn delete_comment(
 ) -> Result<impl IntoResponse, HttpError> {
     let user_id = jwt.user.id;
 
+    // Delete comment (database validates user ownership)
     app_state
         .db_client
         .delete_comment(user_id, comment_id)

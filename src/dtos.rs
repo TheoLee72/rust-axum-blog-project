@@ -2,18 +2,27 @@ use crate::models::{User, UserRole};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use validator::Validate;
-//dto는 client와 통신하는 형태를 정해두는 느낌.
+
+// DTOs (Data Transfer Objects) define the structure of data exchanged with clients
+// They are separate from database models to control exactly what data is exposed
+
+// ============================================================================
+// Authentication DTOs
+// ============================================================================
+
+/// Registration request from client
+/// Validates input and ensures passwords match
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
-//validate는 validator crate때문에 쓰는거고, Default는 기본값 설정 할 수 있대.
-//clone은 일단 써두고 안필요하면 그냥 참조하고, 굳이 필요하다면(멀티스레드 환경) .clone호출 하면 됨.
 pub struct RegisterUserDto {
     #[validate(length(min = 1, message = "Name is required"))]
     pub username: String,
+
     #[validate(
         length(min = 1, message = "Email is required"),
-        email(message = "Email is invalid") //email 형식인지 검증.
+        email(message = "Email is invalid")  // Validates email format
     )]
     pub email: String,
+
     #[validate(length(min = 6, message = "Password must be at least 6 characters"))]
     pub password: String,
 
@@ -21,46 +30,62 @@ pub struct RegisterUserDto {
         length(min = 1, message = "Confirm Password is required"),
         must_match(other = "password", message = "passwords do not match")
     )]
-    #[serde(rename = "confirmPassword")]
+    #[serde(rename = "confirmPassword")] // JSON field name differs from Rust field name
     pub password_confirm: String,
 }
 
+/// Login request - accepts email or username
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LoginUserDto {
     #[validate(length(min = 1, message = "Email or username is required"))]
-    pub identifier: String, //email이랑 username 둘다 되게.
+    pub identifier: String, // Can be email or username
+
     #[validate(length(min = 6, message = "Password must be at least 6 characters"))]
     pub password: String,
 }
 
+/// Password verification for sensitive operations (delete account, etc.)
 #[derive(Validate, Serialize, Deserialize)]
 pub struct DoubleCheckDto {
     #[validate(length(min = 6, message = "Password must be at least 6 characters"))]
     pub password: String,
 }
 
+// ============================================================================
+// Pagination & Query DTOs
+// ============================================================================
+
+/// Generic pagination query parameters
 #[derive(Serialize, Deserialize, Validate)]
 pub struct RequestQueryDto {
     #[validate(range(min = 1))]
     pub page: Option<usize>,
-    #[validate(range(min = 1, max = 50))]
+
+    #[validate(range(min = 1, max = 50))] // Limit maximum results per page
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize)] //user data output용도
+// ============================================================================
+// User Response DTOs (filtered data for client)
+// ============================================================================
+
+/// Filtered user data sent to clients (excludes sensitive fields like password)
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FilterUserDto {
     pub id: String,
     pub name: String,
     pub email: String,
     pub role: String,
     pub verified: bool,
-    #[serde(rename = "createdAt")]
+    #[serde(rename = "createdAt")] // Use camelCase for JavaScript clients
     pub created_at: DateTime<Utc>,
     #[serde(rename = "updatedAt")]
     pub updated_at: DateTime<Utc>,
 }
 
 impl FilterUserDto {
+    /// Convert database User model to client-safe FilterUserDto
+    /// Excludes password hash and other sensitive fields
     pub fn filter_user(user: &User) -> Self {
         FilterUserDto {
             id: user.id.to_string(),
@@ -73,16 +98,19 @@ impl FilterUserDto {
         }
     }
 
+    /// Convert multiple users at once
     pub fn filter_users(user: &[User]) -> Vec<FilterUserDto> {
         user.iter().map(FilterUserDto::filter_user).collect()
     }
 }
 
+/// Single user response wrapper
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserData {
     pub user: FilterUserDto,
 }
 
+/// User profile with additional statistics
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserMeData {
     pub user: FilterUserDto,
@@ -102,6 +130,7 @@ pub struct UserResponseDto {
     pub data: UserData,
 }
 
+/// User list with count
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserListResponseDto {
     pub status: String,
@@ -109,6 +138,7 @@ pub struct UserListResponseDto {
     pub results: i64,
 }
 
+/// Login success response with JWT token
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserLoginResponseDto {
     pub status: String,
@@ -116,17 +146,23 @@ pub struct UserLoginResponseDto {
     pub username: String,
 }
 
+/// Token refresh response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshResponseDto {
     pub status: String,
     pub access_token: String,
 }
 
+/// Generic success response
 #[derive(Serialize, Deserialize)]
 pub struct Response {
     pub status: &'static str,
     pub message: String,
 }
+
+// ============================================================================
+// User Update DTOs
+// ============================================================================
 
 #[derive(Validate, Debug, Default, Clone, Serialize, Deserialize)]
 pub struct NameUpdateDto {
@@ -146,6 +182,7 @@ pub struct RoleUpdateDto {
     pub role: UserRole,
 }
 
+/// Password change request (requires old password verification)
 #[derive(Debug, Validate, Default, Clone, Serialize, Deserialize)]
 pub struct UserPasswordUpdateDto {
     #[validate(length(min = 6, message = "new password must be at least 6 characters"))]
@@ -163,6 +200,10 @@ pub struct UserPasswordUpdateDto {
     #[validate(length(min = 6, message = "Old password must be at least 6 characters"))]
     pub old_password: String,
 }
+
+// ============================================================================
+// Email Verification & Password Reset DTOs
+// ============================================================================
 
 #[derive(Serialize, Deserialize, Validate)]
 pub struct VerifyEmailQueryDto {
@@ -194,16 +235,21 @@ pub struct ResetPasswordRequestDto {
     pub new_password_confirm: String,
 }
 
+// ============================================================================
+// Post DTOs
+// ============================================================================
+
+/// Post creation/update request (used for both POST and PUT)
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct InputPostDto {
-    //post, put 둘다 쓸거임.
     #[validate(length(min = 1, message = "Content is required."))]
     pub content: String,
+
     #[validate(length(min = 1, message = "Title is required."))]
     pub title: String,
 }
 
-/// 단일 Post 데이터
+/// Full post data response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostDto {
     pub id: i32,
@@ -218,7 +264,7 @@ pub struct PostDto {
     pub updated_at: DateTime<Utc>,
 }
 
-/// 페이지네이션 정보
+/// Pagination metadata
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaginationDto {
     pub page: i32,
@@ -228,12 +274,13 @@ pub struct PaginationDto {
     pub total_pages: i32,
 }
 
+/// Simplified post data for list views (excludes full content)
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostPaginationDto {
     pub id: i32,
     #[serde(rename = "userUsername")]
     pub user_username: String,
-    pub summary: String,
+    pub summary: String, // Only summary, not full content
     pub title: String,
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
@@ -241,7 +288,7 @@ pub struct PostPaginationDto {
     pub updated_at: DateTime<Utc>,
 }
 
-/// 전체 응답 구조
+/// Paginated posts response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostsPaginationResponseDto {
     pub status: String,
@@ -249,21 +296,29 @@ pub struct PostsPaginationResponseDto {
     pub pagination: Option<PaginationDto>,
 }
 
+/// Single post response
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PostResponseDto {
     pub status: String,
     pub data: PostDto,
 }
 
+/// Query parameters for fetching posts
 #[derive(Debug, Deserialize, Validate)]
 pub struct PostsQueryParams {
     #[validate(range(min = 1))]
     pub page: Option<i32>,
+
     #[validate(range(min = 1, max = 25))]
     pub limit: Option<i32>,
+
     #[validate(length(min = 1))]
-    pub user_username: Option<String>,
+    pub user_username: Option<String>, // Filter by author
 }
+
+// ============================================================================
+// Comment DTOs
+// ============================================================================
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct InputcommentRequest {
@@ -282,10 +337,12 @@ pub struct GetcommentsQuery {
 
     #[validate(range(min = 1, max = 100, message = "Limit must be between 1 and 100"))]
     pub limit: Option<i32>,
+
     #[validate(custom(function = "validate_sort"))]
-    pub sort: Option<String>, // created_at_desc, created_at_asc
+    pub sort: Option<String>, // created_at_desc or created_at_asc
 }
 
+/// Custom validator for sort parameter
 fn validate_sort(sort: &String) -> Result<(), validator::ValidationError> {
     if sort == "created_at_desc" || sort == "created_at_asc" {
         Ok(())
@@ -320,24 +377,32 @@ pub struct SinglecommentResponse {
     pub data: CommentDto,
 }
 
+// ============================================================================
+// Search & Misc DTOs
+// ============================================================================
+
 #[derive(Debug, Validate, Deserialize)]
 pub struct GetSearchQuery {
     #[validate(length(min = 1))]
-    pub q: String,
+    pub q: String, // Search query
     pub page: Option<i32>,
     pub limit: Option<i32>,
 }
+
+/// LLM API request structure
 #[derive(Debug, Serialize)]
 pub struct LLMReqeustTextInput {
     pub model: String,
     pub input: String,
 }
 
+/// Image upload response
 #[derive(Serialize)]
 pub struct UploadResponse {
-    pub location: String,
+    pub location: String, // URL of uploaded image
 }
 
+/// Newsletter subscription request
 #[derive(Debug, Deserialize, Serialize, Validate)]
 pub struct NewsletterDto {
     #[validate(email)]

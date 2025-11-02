@@ -72,7 +72,18 @@ git clone https://github.com/TheoLee72/rust-axum-blog-project.git
 cd rust-axum-blog-project
 ```
 
-### 2. Install PostgreSQL and pgvector
+### 2. Install Build Tools and Dependencies
+
+**Install essential build tools:**
+
+```bash
+sudo apt update && sudo apt install build-essential
+sudo apt install pkg-config libssl-dev
+```
+
+These packages are required for compiling Rust dependencies and PostgreSQL extensions.
+
+### 3. Install PostgreSQL and pgvector
 
 **Install PostgreSQL:**
 
@@ -108,13 +119,13 @@ ALTER ROLE mybloguser SUPERUSER;
 exit
 ```
 
-### 3. Install SQLx CLI
+### 4. Install SQLx CLI
 
 ```bash
 cargo install sqlx-cli --no-default-features --features postgres
 ```
 
-### 4. Set Up Environment Variables
+### 5. Set Up Environment Variables
 
 Create a `.env` file in the project root:
 
@@ -146,7 +157,7 @@ SMTP_USERNAME=your-email@gmail.com
 SMTP_PASSWORD=your-app-password
 ```
 
-### 5. Run Database Migrations
+### 6. Run Database Migrations
 
 ```bash
 sqlx migrate run
@@ -161,7 +172,7 @@ The migrations will create:
 - Newsletter subscriptions
 - Full-text search indexes
 
-### 6. Install and Configure Redis
+### 7. Install and Configure Redis
 
 **Install Redis:**
 check offical website.
@@ -184,7 +195,7 @@ requirepass your_redis_password
 sudo systemctl restart redis-server
 ```
 
-### 7. Set Up gRPC Embedding Service
+### 8. Set Up gRPC Embedding Service
 
 **Install Protocol Buffer Compiler:**
 
@@ -227,7 +238,7 @@ uv run embed_server.py
 
 The embedding server will start on port 50051.
 
-### 8. Set Up vLLM Service (for AI summarization)
+### 9. Set Up vLLM Service (for AI summarization)
 
 **In the same embedding service directory:**
 
@@ -242,7 +253,7 @@ uv run vllm serve Qwen/Qwen3-0.6B \
 
 > **Note:** Adjust `--gpu-memory-utilization` based on your GPU memory. If you don't have a GPU, vLLM will fall back to CPU (slower).
 
-### 9. Build and Run the Axum Server
+### 10. Build and Run the Axum Server
 
 **Install Rust dependencies:**
 
@@ -266,7 +277,7 @@ cargo run --release
 
 The server will start at `http://localhost:8000` (or your configured PORT).
 
-### 10. Verify Everything is Running
+### 11. Verify Everything is Running
 
 You should have these services running:
 

@@ -72,20 +72,83 @@ git clone https://github.com/TheoLee72/rust-axum-blog-project.git
 cd rust-axum-blog-project
 ```
 
-### 2. Set Up Environment Variables
+### 2. Install PostgreSQL and pgvector
+
+**Install PostgreSQL:**
+
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+```
+
+**Install pgvector extension:**
+
+```bash
+sudo apt install postgresql-server-dev-all
+sudo apt install postgresql-16-pgvector  # Adjust version number to match your PostgreSQL version
+```
+
+**Create Database and User:**
+
+```bash
+# Switch to PostgreSQL user
+sudo -i -u postgres
+psql
+
+# In PostgreSQL prompt:
+CREATE USER mybloguser WITH PASSWORD 'your_secure_password';
+CREATE DATABASE myblog_db OWNER mybloguser;
+GRANT ALL PRIVILEGES ON DATABASE myblog_db TO mybloguser;
+
+# Grant SUPERUSER for pgvector extension (if not using default postgres user)
+ALTER ROLE mybloguser SUPERUSER;
+
+# Exit psql
+\q
+exit
+```
+
+### 3. Install SQLx CLI
+
+```bash
+cargo install sqlx-cli --no-default-features --features postgres
+```
+
+### 4. Set Up Environment Variables
 
 Create a `.env` file in the project root:
 
-### 3. Database Setup
+```env
+# Database
+DATABASE_URL=postgresql://mybloguser:your_secure_password@localhost:5432/myblog_db
+
+# JWT Configuration
+JWT_SECRET_KEY=your-super-secret-jwt-key-change-this-in-production
+JWT_MAXAGE=3600                    # 1 hour in seconds
+REFRESH_TOKEN_MAXAGE=2592000       # 30 days in seconds
+
+# Redis
+REDIS_URL=redis://:your_redis_password@localhost:6379
+
+# Server
+PORT=8000
+FRONTEND_URL=http://localhost:3000
+
+# AI/ML Services
+LLM_URL=http://localhost:8001      # vLLM service
+MODEL_NAME=Qwen/Qwen3-0.6B
+GRPC_URL=http://localhost:50051    # Embedding service
+
+# Email (configure based on your provider)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+```
+
+### 5. Run Database Migrations
 
 ```bash
-# Install SQLx CLI
-cargo install sqlx-cli --no-default-features --features postgres
-
-# Create database
-createdb dbname
-
-# Run migrations
 sqlx migrate run
 ```
 
@@ -98,27 +161,120 @@ The migrations will create:
 - Newsletter subscriptions
 - Full-text search indexes
 
-### 4. Install Dependencies
+### 6. Install and Configure Redis
+
+**Install Redis:**
+check offical website.
+
+**Set Redis Password:**
+
+```bash
+sudo nano /etc/redis/redis.conf
+```
+
+Find and uncomment the `requirepass` line, then set your password:
+
+```conf
+requirepass your_redis_password
+```
+
+**Restart Redis:**
+
+```bash
+sudo systemctl restart redis-server
+```
+
+### 7. Set Up gRPC Embedding Service
+
+**Install Protocol Buffer Compiler:**
+
+```bash
+sudo apt install protobuf-compiler
+```
+
+**Create Embedding Service Directory:**
+
+Create a separate directory for the embedding service with these files:
+
+- `embed.proto` (from the `proto/` folder in this repo)
+- `embed_server.py`
+- `pyproject.toml`
+- `uv.lock`
+
+**Install uv (Python package manager):**
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Set up the embedding service:**
+
+```bash
+cd /path/to/embedding-service
+
+# Install dependencies
+uv sync
+
+# Generate gRPC code from proto file
+uv run -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. embed.proto
+
+# Login to Hugging Face (required for model download)
+uv run hf auth login
+
+# Run the embedding server
+uv run embed_server.py
+```
+
+The embedding server will start on port 50051.
+
+### 8. Set Up vLLM Service (for AI summarization)
+
+**In the same embedding service directory:**
+
+```bash
+# Run vLLM with Qwen model
+uv run vllm serve Qwen/Qwen3-0.6B \
+  --gpu-memory-utilization 0.2 \
+  --max-model-len 8192 \
+  --enforce-eager \
+  --port 8001
+```
+
+> **Note:** Adjust `--gpu-memory-utilization` based on your GPU memory. If you don't have a GPU, vLLM will fall back to CPU (slower).
+
+### 9. Build and Run the Axum Server
+
+**Install Rust dependencies:**
 
 ```bash
 cargo build --release
 ```
 
-### 5. Run the Server
+**Run the server:**
 
-**Development mode:**
+Development mode:
 
 ```bash
 cargo run
 ```
 
-**Production mode:**
+Production mode:
 
 ```bash
 cargo run --release
 ```
 
 The server will start at `http://localhost:8000` (or your configured PORT).
+
+### 10. Verify Everything is Running
+
+You should have these services running:
+
+- ✅ PostgreSQL (port 5432)
+- ✅ Redis (port 6379)
+- ✅ gRPC Embedding Service (port 50051)
+- ✅ vLLM Service (port 8001)
+- ✅ Axum Backend Server (port 8000)
 
 ## 📚 API Documentation
 
@@ -328,6 +484,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 **TheoLee72**
 
 ## 🙏 Acknowledgments
+
+This project was developed based on [rust-backend-axum](https://github.com/aarambh-darshan/rust-backend-axum/tree/main) and expanded with additional features and improvements.
 
 This project was created as a learning resource for the Rust community. It demonstrates:
 

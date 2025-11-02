@@ -26,7 +26,6 @@ use redisdb::RedisClient;
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
-use tracing_subscriber::filter::LevelFilter;
 
 use axum_client_ip::ClientIpSource;
 use std::net::SocketAddr;

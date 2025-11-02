@@ -39,9 +39,9 @@ pub fn init_tracing() -> tracing_appender::non_blocking::WorkerGuard {
     // Create console logging layer
     // with_writer(std::io::stdout): Output directly to terminal/stdout
     // with_filter(): Only logs at INFO level and above - keeps console clean during development
-    // ANSI colors enabled by default for better readability in terminal
     let console_layer = tracing_subscriber::fmt::layer()
         .with_writer(std::io::stdout)
+        .with_ansi(false)
         .with_filter(EnvFilter::new("info"));
 
     // Initialize the global tracing subscriber

@@ -32,7 +32,7 @@ impl DBClient {
             let pool = pool.clone();
 
             Box::pin(async move {
-                println!("Running cleanup job {:?}", uuid);
+                tracing::info!("Running cleanup job {:?}", uuid);
 
                 // Delete unverified users whose verification tokens have expired
                 // Now we have owned access to pool for this specific execution
@@ -47,14 +47,14 @@ impl DBClient {
                 // Log result of cleanup job
                 match result {
                     Ok(r) => {
-                        println!(
+                        tracing::info!(
                             "Cleanup job {:?} finished successfully, deleted {} rows",
                             uuid,
                             r.rows_affected()
                         );
                     }
                     Err(e) => {
-                        eprintln!("Cleanup job {:?} failed: {:?}", uuid, e);
+                        tracing::error!("Cleanup job {:?} failed: {}", uuid, e);
                     }
                 }
             })

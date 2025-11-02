@@ -1,11 +1,12 @@
 use crate::AppState;
 use crate::db::PostExt;
 use crate::dtos::{GetSearchQuery, PaginationDto, PostsPaginationResponseDto};
-use crate::error::HttpError;
+use crate::error::{ErrorMessage, HttpError};
 use axum::Router;
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
+use tracing::instrument;
 use validator::Validate;
 
 /// Router for search endpoints
@@ -48,14 +49,16 @@ pub fn search_handler() -> Router<AppState> {
 /// # Returns
 /// - `Ok(Json)`: Paginated search results with pagination info
 /// - `Err(HttpError)`: If validation fails (400) or database error (500)
+#[instrument(skip(app_state))]
 pub async fn get_hybrid_search(
     Query(params): Query<GetSearchQuery>,
     State(app_state): State<AppState>,
 ) -> Result<impl IntoResponse, HttpError> {
     // Validate query parameters (q must not be empty)
-    params
-        .validate()
-        .map_err(|e| HttpError::bad_request(e.to_string()))?;
+    params.validate().map_err(|e| {
+        tracing::error!("Invalid get_hybrid_search input: {}", e);
+        HttpError::bad_request(e.to_string())
+    })?;
 
     // Extract search parameters with defaults
     let q = params.q;
@@ -74,7 +77,10 @@ pub async fn get_hybrid_search(
         .db_client
         .hybrid_search_posts(&q, embedding.clone(), page, limit)
         .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("DB error, hybrid searching posts: {}", e);
+            HttpError::server_error(ErrorMessage::ServerError.to_string())
+        })?;
 
     // Query 2: Count total matching posts
     // Gets total count without pagination limits (no LIMIT/OFFSET)
@@ -83,7 +89,10 @@ pub async fn get_hybrid_search(
         .db_client
         .hybrid_search_posts_count(&q, embedding)
         .await
-        .map_err(|e| HttpError::server_error(e.to_string()))?;
+        .map_err(|e| {
+            tracing::error!("DB error, hybrid searching posts count: {}", e);
+            HttpError::server_error(ErrorMessage::ServerError.to_string())
+        })?;
 
     // Calculate total pages for frontend pagination UI
     // Ceiling division: (10 results, 3 per page) = 4 pages
@@ -100,6 +109,6 @@ pub async fn get_hybrid_search(
             total_pages,
         }),
     });
-
+    tracing::info!("get_hybrid_search successful");
     Ok(response)
 }

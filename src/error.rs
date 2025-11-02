@@ -83,7 +83,6 @@ pub enum ErrorMessage {
 
     // Authentication errors
     InvalidToken,
-    WrongCredentials,
     TokenNotProvided,
     UserNotAuthenticated,
 
@@ -91,38 +90,29 @@ pub enum ErrorMessage {
     PermissionDenied,
 
     // User management errors
-    EmailExist,
     UserNoLongerExist,
+
+    //Else
+    ServerError,
 }
 
-impl ToString for ErrorMessage {
-    /// Convert error variants to user-friendly error messages
+impl fmt::Display for ErrorMessage {
+    /// Convert ErrorMessage to user-friendly string
     ///
-    /// This centralizes all error messages in one place, making it easy to:
-    /// - Update wording across the entire application
-    /// - Translate to different languages (i18n)
-    /// - Maintain consistent tone and style
-    /// - Review all error messages for clarity
-    ///
-    /// Note: These messages are shown to end users, so they should be:
-    /// - Clear and actionable
-    /// - Non-technical (avoid jargon)
-    /// - Secure (don't leak implementation details)
-    fn to_string(&self) -> String {
-        match self {
-            ErrorMessage::WrongCredentials => "Email or password is wrong".to_string(),
-            ErrorMessage::EmailExist => "A user with this email already exists".to_string(),
+    /// This formats the enum variant as a human-readable error message.
+    /// Same messages as ToString for consistency - users see the same error text.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let message = match self {
             ErrorMessage::UserNoLongerExist => {
                 "User belonging to this token no longer exists".to_string()
             }
             ErrorMessage::EmptyPassword => "Password cannot be empty".to_string(),
             ErrorMessage::HashingError => "Error while hashing password".to_string(),
             ErrorMessage::InvalidHashFormat => "Invalid password hash format".to_string(),
-            // Variant with data - includes the actual max length in the message
             ErrorMessage::ExceededMaxPasswordLength(max_length) => {
                 format!("Password must not be more than {} characters", max_length)
             }
-            ErrorMessage::InvalidToken => "Authentication token is invalid or expired".to_string(),
+            ErrorMessage::InvalidToken => "Token is invalid or expired".to_string(),
             ErrorMessage::TokenNotProvided => {
                 "You are not logged in, please provide a token".to_string()
             }
@@ -132,7 +122,9 @@ impl ToString for ErrorMessage {
             ErrorMessage::UserNotAuthenticated => {
                 "Authentication required. Please log in.".to_string()
             }
-        }
+            ErrorMessage::ServerError => "Server Error. Please try again later".to_string(),
+        };
+        write!(f, "{}", message)
     }
 }
 

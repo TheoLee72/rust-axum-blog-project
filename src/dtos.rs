@@ -56,7 +56,7 @@ pub struct DoubleCheckDto {
 // ============================================================================
 
 /// Generic pagination query parameters
-#[derive(Serialize, Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate, Debug)]
 pub struct RequestQueryDto {
     #[validate(range(min = 1))]
     pub page: Option<usize>,
@@ -205,7 +205,7 @@ pub struct UserPasswordUpdateDto {
 // Email Verification & Password Reset DTOs
 // ============================================================================
 
-#[derive(Serialize, Deserialize, Validate)]
+#[derive(Serialize, Deserialize, Validate, Debug)]
 pub struct VerifyEmailQueryDto {
     #[validate(length(min = 1, message = "Token is required."))]
     pub token: String,

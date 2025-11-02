@@ -206,8 +206,9 @@ sudo apt install protobuf-compiler
 **Create Embedding Service Directory:**
 
 Create a separate directory for the embedding service with these files:
+(./microservices/embedding_vllm)
 
-- `embed.proto` (from the `proto/` folder in this repo)
+- `embed.proto`
 - `embed_server.py`
 - `pyproject.toml`
 - `uv.lock`

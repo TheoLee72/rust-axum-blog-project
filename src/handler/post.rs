@@ -6,8 +6,8 @@ use std::path::PathBuf;
 use crate::AppState;
 use crate::db::PostExt;
 use crate::dtos::{
-    InputPostDto, PaginationDto, PostResponseDto, PostsPaginationResponseDto, PostsQueryParams,
-    UploadResponse,
+    InputPostDto, Lang, LangQuery, PaginationDto, PostResponseDto, PostsPaginationResponseDto,
+    PostsQueryParams, UploadResponse,
 };
 use crate::error::{ErrorMessage, HttpError};
 use crate::handler::comment::comment_handler;
@@ -15,7 +15,7 @@ use crate::middleware::JWTAuthMiddleware;
 use crate::middleware::{auth, role_check};
 use crate::models::UserRole;
 use axum::Extension;
-use axum::extract::{Multipart, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post, put};
@@ -60,6 +60,7 @@ pub fn post_handler(app_state: AppState) -> Router<AppState> {
         .route(
             "/uploads",
             post(upload_image)
+                .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
                 .route_layer(middleware::from_fn(|req, next| {
                     role_check(req, next, vec![UserRole::Admin])
                 }))
@@ -86,11 +87,12 @@ pub async fn get_posts(
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(10);
     let username = params.user_username.unwrap_or("theolee72".to_string());
+    let lang = params.lang.unwrap_or(Lang::En);
 
     // Fetch paginated posts
     let posts = app_state
         .db_client
-        .get_posts(page, limit, &username)
+        .get_posts(page, limit, &username, lang)
         .await
         .map_err(|e| match e {
             sqlx::Error::RowNotFound => {
@@ -133,12 +135,14 @@ pub async fn get_posts(
 #[instrument(skip(app_state))]
 pub async fn get_post(
     Path(post_id): Path<i32>,
+    Query(q): Query<LangQuery>,
     State(app_state): State<AppState>,
 ) -> Result<impl IntoResponse, HttpError> {
+    let lang = q.lang.unwrap_or(Lang::En);
     // Extract post_id from URL path
     let post = app_state
         .db_client
-        .get_post(post_id)
+        .get_post(post_id, lang)
         .await
         .map_err(|e| match e {
             sqlx::Error::RowNotFound => {
@@ -175,6 +179,7 @@ pub async fn get_post(
 pub async fn create_post(
     State(app_state): State<AppState>,
     Extension(jwt): Extension<JWTAuthMiddleware>,
+    Query(q): Query<LangQuery>,
     Json(body): Json<InputPostDto>,
 ) -> Result<impl IntoResponse, HttpError> {
     body.validate().map_err(|e| {
@@ -192,6 +197,8 @@ pub async fn create_post(
     // Placeholder values - will be updated by background task
     let summary_placeholder = "";
     let embedding_placeholder = vec![0.0; 768];
+    let thumbnail_url = body.thumbnail_url;
+    let lang = q.lang.unwrap_or(Lang::En);
 
     // Save post to database
     let result = app_state
@@ -203,6 +210,7 @@ pub async fn create_post(
             &raw_text,
             summary_placeholder,
             embedding_placeholder,
+            &thumbnail_url,
         )
         .await
         .map_err(|e| {
@@ -225,6 +233,7 @@ pub async fn create_post(
                 &app_state_clone.env.llm_url,
                 &app_state_clone.env.model_name,
                 &raw_text_clone,
+                lang,
             )
             .await;
 
@@ -263,6 +272,7 @@ pub async fn edit_post(
     Path(post_id): Path<i32>,
     State(app_state): State<AppState>,
     Extension(jwt): Extension<JWTAuthMiddleware>,
+    Query(q): Query<LangQuery>,
     Json(body): Json<InputPostDto>,
 ) -> Result<impl IntoResponse, HttpError> {
     body.validate().map_err(|e| {
@@ -274,11 +284,21 @@ pub async fn edit_post(
     let content = secure_content(&body.content);
     let title = body.title;
     let raw_text = html2text::from_read(content.as_bytes(), 80).unwrap();
+    let thumbnail_url = body.thumbnail_url;
+    let lang = q.lang.unwrap_or(Lang::En);
 
     // Update post in database
     let result = app_state
         .db_client
-        .edit_post(user_id, post_id, &content, &title, &raw_text)
+        .edit_post(
+            user_id,
+            post_id,
+            &content,
+            &title,
+            &raw_text,
+            &thumbnail_url,
+            lang.clone(),
+        )
         .await
         .map_err(|e| {
             tracing::error!("DB error, editing post: {}", e);
@@ -289,7 +309,12 @@ pub async fn edit_post(
     tokio::spawn(async move {
         let summary = app_state
             .http_client
-            .get_summary(&app_state.env.llm_url, &app_state.env.model_name, &raw_text)
+            .get_summary(
+                &app_state.env.llm_url,
+                &app_state.env.model_name,
+                &raw_text,
+                lang,
+            )
             .await;
 
         let embedding = app_state
@@ -355,7 +380,7 @@ pub async fn delete_post(
 #[instrument(skip(multipart))]
 pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse, HttpError> {
     // Create upload directory if it doesn't exist
-    let upload_dir = PathBuf::from("/opt/blog_backend_axum/uploads");
+    let upload_dir = PathBuf::from("./uploads");
     fs::create_dir_all(&upload_dir).map_err(|e| {
         tracing::error!("Failed to create upload directory: {}", e);
         HttpError::server_error(format!("Failed to create upload directory: {}", e))
@@ -503,6 +528,7 @@ fn secure_content(content: &str) -> String {
         "color",
         "font-weight",
         "font-size",
+        "max-width",
     ]);
     let secure_content = ammonia::Builder::default()
         .generic_attributes(HashSet::from(["style", "class"]))

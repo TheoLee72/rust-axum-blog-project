@@ -1,6 +1,6 @@
 use crate::AppState;
 use crate::db::PostExt;
-use crate::dtos::{GetSearchQuery, PaginationDto, PostsPaginationResponseDto};
+use crate::dtos::{GetSearchQuery, Lang, PaginationDto, PostsPaginationResponseDto};
 use crate::error::{ErrorMessage, HttpError};
 use axum::Router;
 use axum::extract::{Query, State};
@@ -64,6 +64,7 @@ pub async fn get_hybrid_search(
     let q = params.q;
     let page = params.page.unwrap_or(1);
     let limit = params.limit.unwrap_or(10);
+    let lang = params.lang.unwrap_or(Lang::En);
 
     // Generate embedding for the search query using gRPC
     // Converts text query into 768-dimensional vector (embeddinggemma output)
@@ -75,7 +76,7 @@ pub async fn get_hybrid_search(
     // returns paginated results (LIMIT/OFFSET applied)
     let search_result = app_state
         .db_client
-        .hybrid_search_posts(&q, embedding.clone(), page, limit)
+        .hybrid_search_posts(&q, embedding.clone(), page, limit, lang)
         .await
         .map_err(|e| {
             tracing::error!("DB error, hybrid searching posts: {}", e);

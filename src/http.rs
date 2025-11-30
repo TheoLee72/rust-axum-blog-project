@@ -1,4 +1,4 @@
-use crate::dtos::LLMReqeustTextInput;
+use crate::dtos::{LLMReqeustTextInput, Lang};
 use crate::error::HttpError;
 
 /// HTTP client wrapper for making external API calls
@@ -69,6 +69,7 @@ impl HttpClient {
         llm_url: &str,
         model_name: &str,
         raw_text: &str,
+        lang: Lang,
     ) -> Result<String, HttpError> {
         // Construct the full API endpoint URL
         // Most LLM services follow the OpenAI API format: /v1/[endpoint]
@@ -76,18 +77,32 @@ impl HttpClient {
 
         // Build the request body with model name and prompt
         // The prompt instructs the LLM to generate a concise, focused summary
-        let request_body = LLMReqeustTextInput {
-            model: model_name.to_string(),
-            // Prompt engineering: Clear instructions for consistent output
-            // - "exactly 3 sentences": Controls length
-            // - "under 100 words": Prevents overly long summaries
-            // - "main ideas, not details": Ensures summary quality
-            input: format!(
-                "Summarize the following text in exactly 3 sentences. 
+        let request_body = if lang == Lang::En {
+            LLMReqeustTextInput {
+                model: model_name.to_string(),
+                // Prompt engineering: Clear instructions for consistent output
+                // - "exactly 3 sentences": Controls length
+                // - "under 100 words": Prevents overly long summaries
+                // - "main ideas, not details": Ensures summary quality
+                input: format!(
+                    "Summarize the following text in exactly 3 sentences. 
                 The summary must be under 100 words in total. 
                 Focus only on the main ideas, not details or examples. {}",
-                raw_text
-            ),
+                    raw_text
+                ),
+            }
+        } else {
+            LLMReqeustTextInput {
+                model: model_name.to_string(),
+                // Prompt engineering: Clear instructions for consistent output
+                // - "exactly 3 sentences": Controls length
+                // - "under 100 words": Prevents overly long summaries
+                // - "main ideas, not details": Ensures summary quality
+                input: format!(
+                    "다음 글을 정확히 세 문장으로 요약하세요. 요약은 총 100단어 이내여야 합니다. 세부사항이나 예시는 제외하고 핵심 아이디어에만 집중하세요. {}",
+                    raw_text
+                ),
+            }
         };
 
         // Send POST request to LLM API with JSON body

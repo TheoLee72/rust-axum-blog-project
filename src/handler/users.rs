@@ -170,6 +170,17 @@ pub async fn update_user_name(
         .await
         .map_err(|e| {
             tracing::error!("DB error, updating user name: {}", e);
+            // Postgres unique violation has SQLSTATE code 23505
+            if let sqlx::Error::Database(ref db_err) = e {
+                if let Some(code) = db_err.code() {
+                    if code == "23505" {
+                        return HttpError::new(
+                            "Username already exists".to_string(),
+                            StatusCode::BAD_REQUEST,
+                        );
+                    }
+                }
+            }
             HttpError::server_error(ErrorMessage::ServerError.to_string())
         })?;
 

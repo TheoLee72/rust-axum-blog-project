@@ -239,9 +239,18 @@ pub struct ResetPasswordRequestDto {
 // Post DTOs
 // ============================================================================
 
+/// For language selection
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LangQuery {
+    pub lang: Option<Lang>,
+}
+
 /// Post creation/update request (used for both POST and PUT)
 #[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct InputPostDto {
+    #[validate(length(min = 1, message = "Thumbnail_url is required."))]
+    pub thumbnail_url: String,
+
     #[validate(length(min = 1, message = "Content is required."))]
     pub content: String,
 
@@ -258,6 +267,7 @@ pub struct PostDto {
     pub content: String,
     pub summary: String,
     pub title: String,
+    pub thumbnail_url: String,
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
     #[serde(rename = "updatedAt")]
@@ -282,6 +292,7 @@ pub struct PostPaginationDto {
     pub user_username: String,
     pub summary: String, // Only summary, not full content
     pub title: String,
+    pub thumbnail_url: String,
     #[serde(rename = "createdAt")]
     pub created_at: DateTime<Utc>,
     #[serde(rename = "updatedAt")]
@@ -303,6 +314,14 @@ pub struct PostResponseDto {
     pub data: PostDto,
 }
 
+/// Allowed languages for queries
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Lang {
+    En,
+    Ko,
+}
+
 /// Query parameters for fetching posts
 #[derive(Debug, Deserialize, Validate)]
 pub struct PostsQueryParams {
@@ -314,6 +333,8 @@ pub struct PostsQueryParams {
 
     #[validate(length(min = 1))]
     pub user_username: Option<String>, // Filter by author
+
+    pub lang: Option<Lang>,
 }
 
 // ============================================================================
@@ -387,6 +408,7 @@ pub struct GetSearchQuery {
     pub q: String, // Search query
     pub page: Option<i32>,
     pub limit: Option<i32>,
+    pub lang: Option<Lang>,
 }
 
 /// LLM API request structure

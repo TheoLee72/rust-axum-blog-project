@@ -3,12 +3,9 @@ use crate::dtos::{Lang, PostDto, PostPaginationDto};
 use pgvector::Vector;
 use uuid::Uuid;
 
-/// Post database operations trait
 pub trait PostExt {
-    /// Get single post by ID with full content
     async fn get_post(&self, post_id: i32, lang: Lang) -> Result<PostDto, sqlx::Error>;
 
-    /// Get paginated posts from specific user
     async fn get_posts(
         &self,
         page: i32,
@@ -17,7 +14,6 @@ pub trait PostExt {
         lang: Lang,
     ) -> Result<Vec<PostPaginationDto>, sqlx::Error>;
 
-    /// Create new post with content and embedding
     async fn create_post(
         &self,
         user_id: Uuid,
@@ -29,7 +25,6 @@ pub trait PostExt {
         thumbnail_url: &str,
     ) -> Result<PostDto, sqlx::Error>;
 
-    /// Update post content, title, and raw text
     async fn edit_post(
         &self,
         user_id: Uuid,
@@ -41,13 +36,10 @@ pub trait PostExt {
         lang: Lang,
     ) -> Result<PostDto, sqlx::Error>;
 
-    /// Delete post (user must own the post)
     async fn delete_post(&self, user_id: Uuid, post_id: i32) -> Result<(), sqlx::Error>;
 
-    /// Count total posts by username
     async fn get_user_post_count(&self, user_username: &str) -> Result<i64, sqlx::Error>;
 
-    /// Search posts using both full-text and vector similarity
     async fn hybrid_search_posts(
         &self,
         query_text: &str,
@@ -57,14 +49,12 @@ pub trait PostExt {
         lang: Lang,
     ) -> Result<Vec<PostPaginationDto>, sqlx::Error>;
 
-    /// Count total results for hybrid search
     async fn hybrid_search_posts_count(
         &self,
         query_text: &str,
         embedding: Vec<f32>,
     ) -> Result<i32, sqlx::Error>;
 
-    /// Update post summary and embedding (used after LLM processing)
     async fn update_post_summary_and_embedding(
         &self,
         post_id: i32,
@@ -76,8 +66,6 @@ pub trait PostExt {
 
 impl PostExt for DBClient {
     async fn get_post(&self, post_id: i32, lang: Lang) -> Result<PostDto, sqlx::Error> {
-        // Fetch post with full content and author username
-
         let post = if lang == Lang::En {
             sqlx::query_as!(
                 PostDto,
@@ -116,10 +104,8 @@ impl PostExt for DBClient {
         user_username: &str,
         lang: Lang,
     ) -> Result<Vec<PostPaginationDto>, sqlx::Error> {
-        // Calculate OFFSET for pagination
         let offset = (page - 1) * limit;
 
-        // assign posts from the if/else expression so it's in outer scope
         let posts = if lang == Lang::En {
             sqlx::query_as!(
                 PostPaginationDto,
@@ -156,7 +142,6 @@ impl PostExt for DBClient {
             .await?
         };
 
-        // Return RowNotFound if no posts exist
         if posts.is_empty() {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -174,10 +159,8 @@ impl PostExt for DBClient {
         embedding: Vec<f32>,
         thumbnail_url: &str,
     ) -> Result<PostDto, sqlx::Error> {
-        // Convert Vec<f32> to pgvector format
         let embedding = Vector::from(embedding);
 
-        // Use CTE (WITH clause) to insert and return post with username
         let post = sqlx::query_as!(
             PostDto,
             r#"
@@ -224,7 +207,6 @@ impl PostExt for DBClient {
         thumbnail_url: &str,
         lang: Lang,
     ) -> Result<PostDto, sqlx::Error> {
-        // Update post only if user owns it — update KO columns when lang != En
         let post = if lang == Lang::En {
             sqlx::query_as!(
                 PostDto,
@@ -293,7 +275,6 @@ impl PostExt for DBClient {
     }
 
     async fn delete_post(&self, user_id: Uuid, post_id: i32) -> Result<(), sqlx::Error> {
-        // Delete post only if user owns it
         let result = sqlx::query!(
             "DELETE FROM post WHERE id = $1 AND user_id = $2",
             post_id,
@@ -302,7 +283,6 @@ impl PostExt for DBClient {
         .execute(&self.pool)
         .await?;
 
-        // Return RowNotFound if post doesn't exist or user doesn't own it
         if result.rows_affected() == 0 {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -311,7 +291,6 @@ impl PostExt for DBClient {
     }
 
     async fn get_user_post_count(&self, user_username: &str) -> Result<i64, sqlx::Error> {
-        // Count posts by username
         let count = sqlx::query_scalar!(
             r#"
             SELECT COUNT(p.id)
@@ -335,12 +314,9 @@ impl PostExt for DBClient {
         limit: i32,
         lang: Lang,
     ) -> Result<Vec<PostPaginationDto>, sqlx::Error> {
-        // Convert embedding to pgvector format
         let embedding = Vector::from(embedding);
         let offset = (page - 1) * limit;
 
-        // Call PostgreSQL hybrid_search function (full-text + vector search)
-        // Branch on lang to map correct columns to the DTO (summary/title -> _ko when not EN)
         let posts = if lang == Lang::En {
             sqlx::query_as!(
                 PostPaginationDto,
@@ -383,7 +359,6 @@ impl PostExt for DBClient {
     ) -> Result<i32, sqlx::Error> {
         let embedding = Vector::from(embedding);
 
-        // Call PostgreSQL hybrid_search_count function
         let count = sqlx::query_scalar!(
             r#"SELECT hybrid_search_count($1, $2)"#,
             query_text,
@@ -402,10 +377,8 @@ impl PostExt for DBClient {
         embedding: Vec<f32>,
         lang: Lang,
     ) -> Result<(), sqlx::Error> {
-        // Convert embedding to pgvector format
         let embedding = Vector::from(embedding);
 
-        // Update summary and embedding (called after LLM and embedding service processing)
         if lang == Lang::En {
             sqlx::query!(
                 r#"

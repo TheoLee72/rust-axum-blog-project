@@ -24,7 +24,6 @@ use axum_client_ip::ClientIp;
 
 use tracing::instrument;
 
-/// Router for authentication endpoints
 pub fn auth_handler(app_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
@@ -38,35 +37,24 @@ pub fn auth_handler(app_state: AppState) -> Router<AppState> {
         .route("/refresh", post(refresh))
 }
 
-/// Register new user account
-/// Creates user, hashes password, sends verification email
-/// The #[instrument] macro automatically:
-/// - Creates a span with function name "register"
-/// - Captures all function arguments as span fields
-/// - Skips State and Extension (marked with skip)
-/// - Works seamlessly with async
 #[instrument(skip(app_state, body), fields(username = %body.username, email = %body.email))]
 pub async fn register(
     State(app_state): State<AppState>,
     Json(body): Json<RegisterUserDto>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Validate input
     body.validate().map_err(|e| {
         tracing::error!("Invalid register input: {}", e);
         HttpError::bad_request(e.to_string())
     })?;
 
-    // Create verification token valid for 24 hours
     let verification_token = uuid::Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::hours(24);
 
-    // Hash password before storing
     let hash_password = password::hash(&body.password).map_err(|e| {
         tracing::error!("Password hashing error: {}", e);
         HttpError::server_error(e.to_string())
     })?;
 
-    // Save user to database with verification token
     let result = app_state
         .db_client
         .save_user(
@@ -80,7 +68,6 @@ pub async fn register(
 
     match result {
         Ok(_user) => {
-            // Send verification email (don't block if email fails)
             let send_email_result = send_verification_email(
                 &body.email,
                 &body.username,
@@ -105,7 +92,6 @@ pub async fn register(
             ))
         }
         Err(sqlx::Error::Database(db_err)) => {
-            // Email or username already exists
             if db_err.is_unique_violation() {
                 tracing::error!("DB error, saving user, unique_violation: {}", db_err);
                 Err(HttpError::unique_constraint_violation(db_err.to_string()))
@@ -125,14 +111,12 @@ pub async fn register(
     }
 }
 
-/// Login with rate limiting (100 attempts per IP per day, 10 per identifier per hour)
 #[instrument(skip(app_state, body), fields(identifier = %body.identifier))]
 pub async fn login(
     ClientIp(ip): ClientIp,
     State(app_state): State<AppState>,
     Json(body): Json<LoginUserDto>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Check IP attempt limit (max 100 per 24 hours)
     let ip_attempts = app_state
         .redis_client
         .get_ip_attempts(ip)
@@ -147,7 +131,6 @@ pub async fn login(
         return Err(HttpError::server_error("Login failed"));
     }
 
-    // Check identifier+IP attempt limit (max 10 per hour)
     let identifier_ip_attempts = app_state
         .redis_client
         .get_identifier_ip_attempts(ip, &body.identifier)
@@ -163,10 +146,8 @@ pub async fn login(
         return Err(HttpError::server_error("Login failed"));
     }
 
-    // Attempt authentication
     match authenticate_process(State(app_state.clone()), &body).await {
         Ok(response) => {
-            // Clear rate limit on success
             if let Err(e) = app_state
                 .redis_client
                 .delete_identifier_ip_attempts(ip, &body.identifier)
@@ -178,7 +159,6 @@ pub async fn login(
             Ok(response)
         }
         Err(_) => {
-            // Increment rate limit on failure
             if let Err(e) = app_state
                 .redis_client
                 .increment_attempts(ip, &body.identifier)
@@ -191,7 +171,6 @@ pub async fn login(
     }
 }
 
-/// Authenticate user credentials
 async fn authenticate_process(
     State(app_state): State<AppState>,
     body: &LoginUserDto,
@@ -201,7 +180,6 @@ async fn authenticate_process(
         HttpError::server_error("Login failed")
     })?;
 
-    // Find user by email or username (identifier contains '@' for email)
     let result = if body.identifier.contains('@') {
         app_state
             .db_client
@@ -227,14 +205,12 @@ async fn authenticate_process(
         HttpError::server_error("Login failed")
     })?;
 
-    // Verify password hash
     let password_matched = password::compare(&body.password, &user.password).map_err(|e| {
         tracing::error!("Password error: {}", e);
         HttpError::server_error("Login failed")
     })?;
 
     if password_matched {
-        // Create short-lived access token (15 minutes)
         let access_token = token::create_token(
             &user.id.to_string(),
             &app_state.env.jwt_secret.as_bytes(),
@@ -257,7 +233,6 @@ async fn authenticate_process(
             username: user.username,
         });
 
-        // Create long-lived refresh token (7 days)
         let refresh_token = token::create_token(
             &user.id.to_string(),
             &app_state.env.jwt_secret.as_bytes(),
@@ -286,7 +261,6 @@ async fn authenticate_process(
             refresh_cookie.to_string().parse().unwrap(),
         );
 
-        // Store refresh token in Redis for revocation support
         app_state
             .redis_client
             .save_refresh_token(
@@ -310,7 +284,6 @@ async fn authenticate_process(
     }
 }
 
-/// Verify email via token from email link
 #[instrument(skip(app_state))]
 pub async fn verify_email(
     Query(query_params): Query<VerifyEmailQueryDto>,
@@ -321,7 +294,6 @@ pub async fn verify_email(
         HttpError::bad_request(e.to_string())
     })?;
 
-    // Find user by verification token
     let result = app_state
         .db_client
         .get_user(None, None, None, Some(&query_params.token))
@@ -336,7 +308,6 @@ pub async fn verify_email(
         HttpError::unauthorized(ErrorMessage::InvalidToken.to_string())
     })?;
 
-    // Check token expiration
     if let Some(expires_at) = user.token_expires_at {
         if Utc::now() > expires_at {
             tracing::error!(user_id = %user.id, "Verification token expired");
@@ -351,7 +322,6 @@ pub async fn verify_email(
         ));
     }
 
-    // Mark token as verified in database
     app_state
         .db_client
         .verifed_token(&query_params.token)
@@ -361,7 +331,6 @@ pub async fn verify_email(
             HttpError::server_error(e.to_string())
         })?;
 
-    // Token format: "UUID+newemail" indicates email change verification
     if query_params.token.contains('+') {
         let new_email = &query_params.token[37..];
         app_state
@@ -372,7 +341,6 @@ pub async fn verify_email(
                 tracing::error!(user_id = %user.id, new_email = %new_email, "Failed to update user email: {}", e);
                 HttpError::server_error(e.to_string())})?;
     } else {
-        // First-time verification, send welcome email
         let send_welcome_email_result = send_welcome_email(&user.email, &user.username).await;
 
         if let Err(e) = send_welcome_email_result {
@@ -389,19 +357,16 @@ pub async fn verify_email(
     ))
 }
 
-/// Request password reset link (identifier can be email or username)
 #[instrument(skip(app_state))]
 pub async fn forgot_password(
     State(app_state): State<AppState>,
     Json(body): Json<ForgotPasswordRequestDto>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Validate input
     body.validate().map_err(|e| {
         tracing::error!("Invalid forgot_password input: {}", e);
         HttpError::bad_request(e.to_string())
     })?;
 
-    // Find user by email or username
     let result = match body.identifier.as_str() {
         email if email.contains("@") => {
             app_state
@@ -426,13 +391,11 @@ pub async fn forgot_password(
         HttpError::bad_request("Email not found".to_string())
     })?;
 
-    // Create reset token valid for 30 minutes
     let verification_token = uuid::Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::minutes(30);
 
     let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
 
-    // Store reset token in database
     app_state
         .db_client
         .add_verifed_token(user_id, &verification_token, expires_at)
@@ -442,13 +405,11 @@ pub async fn forgot_password(
             HttpError::server_error(ErrorMessage::ServerError.to_string())
         })?;
 
-    // Build reset link with token
     let reset_link = format!(
         "{}/auth/password/reset/{}",
         app_state.env.frontend_url, &verification_token
     );
 
-    // Send reset email
     let email_sent = send_forgot_password_email(&user.email, &reset_link, &user.username).await;
 
     if let Err(e) = email_sent {
@@ -464,7 +425,6 @@ pub async fn forgot_password(
     Ok(Json(response))
 }
 
-/// Reset password with token from email
 #[instrument(skip(app_state, body))]
 pub async fn reset_password(
     State(app_state): State<AppState>,
@@ -475,7 +435,6 @@ pub async fn reset_password(
         HttpError::bad_request(e.to_string())
     })?;
 
-    // Find user by reset token
     let result = app_state
         .db_client
         .get_user(None, None, None, Some(&body.token))
@@ -490,7 +449,6 @@ pub async fn reset_password(
         HttpError::bad_request("Invalid or expired token".to_string())
     })?;
 
-    // Check token expiration
     if let Some(expires_at) = user.token_expires_at {
         if Utc::now() > expires_at {
             tracing::error!(user_id = %user.id, "Verification token has expired");
@@ -507,13 +465,11 @@ pub async fn reset_password(
 
     let user_id = uuid::Uuid::parse_str(&user.id.to_string()).unwrap();
 
-    // Hash new password
     let hash_password = password::hash(&body.new_password).map_err(|e| {
         tracing::error!("Password hashing error: {}", e);
         HttpError::server_error(ErrorMessage::ServerError.to_string())
     })?;
 
-    // Update password in database
     app_state
         .db_client
         .update_user_password(user_id.clone(), hash_password)
@@ -523,7 +479,6 @@ pub async fn reset_password(
             HttpError::server_error(ErrorMessage::ServerError.to_string())
         })?;
 
-    // Mark token as used
     app_state
         .db_client
         .verifed_token(&body.token)
@@ -541,13 +496,11 @@ pub async fn reset_password(
     Ok(Json(response))
 }
 
-/// Refresh access token using refresh token from cookie
 #[instrument(skip(app_state, cookie_jar))]
 pub async fn refresh(
     cookie_jar: CookieJar,
     State(app_state): State<AppState>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Extract refresh token from cookie
     let cookies = cookie_jar
         .get("refresh_token")
         .map(|cookie| cookie.value().to_string());
@@ -557,7 +510,6 @@ pub async fn refresh(
         HttpError::unauthorized(ErrorMessage::TokenNotProvided.to_string())
     })?;
 
-    // Decode and verify refresh token
     let token_details = match token::decode_token(&token, app_state.env.jwt_secret.as_bytes()) {
         Ok(token_details) => token_details,
         Err(e) => {
@@ -568,7 +520,6 @@ pub async fn refresh(
         }
     };
 
-    // Verify refresh token exists in Redis (hasn't been revoked)
     let stored_refresh_token = app_state
         .redis_client
         .get_refresh_token(&token_details)
@@ -578,7 +529,6 @@ pub async fn refresh(
             HttpError::server_error(ErrorMessage::ServerError.to_string())
         })?;
 
-    // Ensure token matches stored value
     if stored_refresh_token.is_none() || stored_refresh_token.unwrap() != token {
         tracing::error!("Refresh token mismatch or not found in Redis");
         return Err(HttpError::server_error(
@@ -586,7 +536,6 @@ pub async fn refresh(
         ));
     }
 
-    // Create new access token
     let access_token = token::create_token(
         &token_details,
         &app_state.env.jwt_secret.as_bytes(),

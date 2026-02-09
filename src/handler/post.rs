@@ -24,17 +24,9 @@ use tracing::instrument;
 use uuid::Uuid;
 use validator::Validate;
 
-/// Router for blog post endpoints
-///
-/// **Middleware Execution Order:**
-/// When multiple .route_layer() calls are used, they execute bottom-to-top.
-/// In create_post: auth middleware runs first, then role_check.
-/// This ensures user is authenticated before checking their role.
 pub fn post_handler(app_state: AppState) -> Router<AppState> {
     Router::new()
-        // GET /posts - List posts with pagination
         .route("/", get(get_posts))
-        // POST /posts - Create new post (admin only, requires auth)
         .route(
             "/",
             post(create_post)
@@ -43,10 +35,7 @@ pub fn post_handler(app_state: AppState) -> Router<AppState> {
                 }))
                 .route_layer(middleware::from_fn_with_state(app_state.clone(), auth)),
         )
-        // GET /posts/{post_id} - Get single post
         .route("/{post_id}", get(get_post))
-        // PUT /posts/{post_id} - Update post (admin only, requires auth)
-        // DELETE /posts/{post_id} - Delete post (admin only, requires auth)
         .route(
             "/{post_id}",
             put(edit_post)
@@ -56,7 +45,6 @@ pub fn post_handler(app_state: AppState) -> Router<AppState> {
                 }))
                 .route_layer(middleware::from_fn_with_state(app_state.clone(), auth)),
         )
-        // POST /posts/uploads - Upload image (admin only, requires auth)
         .route(
             "/uploads",
             post(upload_image)
@@ -66,14 +54,9 @@ pub fn post_handler(app_state: AppState) -> Router<AppState> {
                 }))
                 .route_layer(middleware::from_fn_with_state(app_state.clone(), auth)),
         )
-        // Nest comments routes: /posts/{post_id}/comments/*
         .nest("/{post_id}/comments", comment_handler(app_state))
 }
 
-/// Get paginated list of posts
-///
-/// Defaults to posts from user "theolee72" if no username specified.
-/// Query params: ?page=1&limit=10&user_username=username
 #[instrument(skip(app_state))]
 pub async fn get_posts(
     Query(params): Query<PostsQueryParams>,
@@ -89,7 +72,6 @@ pub async fn get_posts(
     let username = params.user_username.unwrap_or("theolee72".to_string());
     let lang = params.lang.unwrap_or(Lang::En);
 
-    // Fetch paginated posts
     let posts = app_state
         .db_client
         .get_posts(page, limit, &username, lang)
@@ -105,7 +87,6 @@ pub async fn get_posts(
             }
         })?;
 
-    // Get total post count for pagination metadata
     let total = app_state
         .db_client
         .get_user_post_count(&username)
@@ -131,7 +112,6 @@ pub async fn get_posts(
     Ok(response)
 }
 
-/// Get single post by ID
 #[instrument(skip(app_state))]
 pub async fn get_post(
     Path(post_id): Path<i32>,
@@ -139,7 +119,6 @@ pub async fn get_post(
     State(app_state): State<AppState>,
 ) -> Result<impl IntoResponse, HttpError> {
     let lang = q.lang.unwrap_or(Lang::En);
-    // Extract post_id from URL path
     let post = app_state
         .db_client
         .get_post(post_id, lang)
@@ -163,18 +142,6 @@ pub async fn get_post(
     Ok(response)
 }
 
-/// Create new blog post
-///
-/// **Post Creation Process:**
-/// 1. Validate and sanitize HTML content
-/// 2. Extract plain text for full-text search
-/// 3. Save post to database (with placeholder summary/embedding)
-/// 4. Spawn background task to generate summary and embedding
-///
-/// **Why Background Task?**
-/// Generating summary (LLM) and embedding (gRPC) are slow operations.
-/// Returning response immediately improves user experience.
-/// Background task updates database when complete.
 #[instrument(skip(app_state, jwt, body))]
 pub async fn create_post(
     State(app_state): State<AppState>,
@@ -188,19 +155,15 @@ pub async fn create_post(
     })?;
 
     let user_id = jwt.user.id;
-    // Sanitize HTML content (remove dangerous tags/attributes)
     let content = secure_content(&body.content);
     let title = body.title;
-    // Extract plain text from HTML (for full-text search)
     let raw_text = html2text::from_read(content.as_bytes(), 80).unwrap();
 
-    // Placeholder values - will be updated by background task
     let summary_placeholder = "";
     let embedding_placeholder = vec![0.0; 768];
     let thumbnail_url = body.thumbnail_url;
     let lang = q.lang.unwrap_or(Lang::En);
 
-    // Save post to database
     let result = app_state
         .db_client
         .create_post(
@@ -223,10 +186,7 @@ pub async fn create_post(
     let raw_text_clone = raw_text.clone();
     let title_clone = title.clone();
 
-    // Spawn background task to generate summary and embedding
-    // This runs concurrently and doesn't block the response
     tokio::spawn(async move {
-        // Get summary from LLM service
         let summary = app_state_clone
             .http_client
             .get_summary(
@@ -237,13 +197,11 @@ pub async fn create_post(
             )
             .await;
 
-        // Get embedding from gRPC service
         let embedding = app_state_clone
             .grpc_client
             .get_embedding_docs(&raw_text_clone, &title_clone)
             .await;
 
-        // Update post with summary and embedding if both succeeded
         if let (Ok(summary), Ok(embedding)) = (summary, embedding) {
             if let Err(e) = app_state_clone
                 .db_client
@@ -263,10 +221,6 @@ pub async fn create_post(
     Ok((StatusCode::CREATED, response))
 }
 
-/// Edit existing post
-///
-/// Updates content, title, and plain text.
-/// Spawns background task to regenerate summary and embedding.
 #[instrument(skip(app_state, jwt, body))]
 pub async fn edit_post(
     Path(post_id): Path<i32>,
@@ -287,7 +241,6 @@ pub async fn edit_post(
     let thumbnail_url = body.thumbnail_url;
     let lang = q.lang.unwrap_or(Lang::En);
 
-    // Update post in database
     let result = app_state
         .db_client
         .edit_post(
@@ -305,7 +258,6 @@ pub async fn edit_post(
             HttpError::server_error(ErrorMessage::ServerError.to_string())
         })?;
 
-    // Spawn background task to regenerate summary and embedding
     tokio::spawn(async move {
         let summary = app_state
             .http_client
@@ -343,7 +295,6 @@ pub async fn edit_post(
     Ok(response)
 }
 
-/// Delete post
 #[instrument(skip(app_state, jwt))]
 pub async fn delete_post(
     Path(post_id): Path<i32>,
@@ -364,22 +315,8 @@ pub async fn delete_post(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// Upload image for blog post
-///
-/// **Security Checks:**
-/// 1. Filename sanitization (remove dangerous characters)
-/// 2. Content-type validation (only images allowed)
-/// 3. File size limit (10MB max)
-/// 4. File extension validation
-/// 5. Magic bytes verification (check actual file content)
-///
-/// **Storage:**
-/// - Files saved to /opt/blog_backend_axum/uploads/
-/// - Filename randomized (UUID) to prevent collisions
-/// - Served via Nginx at https://theolee.net/static/uploads/
 #[instrument(skip(multipart))]
 pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse, HttpError> {
-    // Create upload directory if it doesn't exist
     let upload_dir = PathBuf::from("./uploads");
     fs::create_dir_all(&upload_dir).map_err(|e| {
         tracing::error!("Failed to create upload directory: {}", e);
@@ -395,7 +332,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             .ok_or_else(|| HttpError::bad_request("Missing filename"))?
             .to_string();
 
-        // Sanitize filename - keep only safe characters
         let safe_filename: String = file_name
             .chars()
             .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
@@ -406,7 +342,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             return Err(HttpError::bad_request("Invalid filename"));
         }
 
-        // Check content-type header
         let content_type = field
             .content_type()
             .ok_or_else(|| HttpError::bad_request("Missing content type"))?
@@ -418,7 +353,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             return Err(HttpError::bad_request("Invalid file type"));
         }
 
-        // Read file bytes
         let bytes = field.bytes().await.map_err(|e| {
             tracing::error!("Failed to read file: {}", e);
             HttpError::bad_request(format!("Failed to read file: {}", e))
@@ -429,7 +363,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             return Err(HttpError::bad_request("Empty file"));
         }
 
-        // Check file size (max 10MB)
         const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
 
         if bytes.len() > MAX_FILE_SIZE {
@@ -440,7 +373,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             )));
         }
 
-        // Extract and validate file extension
         let ext = safe_filename
             .rsplit('.')
             .next()
@@ -452,7 +384,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             return Err(HttpError::bad_request("File extension not allowed"));
         }
 
-        // Verify file magic bytes (prevent uploading disguised files)
         if !verify_image_signature(&bytes, &ext) {
             tracing::error!("File content does not match extension: {}", ext);
             return Err(HttpError::bad_request(
@@ -460,7 +391,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             ));
         }
 
-        // Save file with randomized name
         let new_name = format!("{}.{}", Uuid::new_v4(), ext);
 
         let mut path = upload_dir;
@@ -475,7 +405,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
             HttpError::server_error(format!("Failed to write to file: {}", e))
         })?;
 
-        // Return public URL (served by Nginx)
         let public_url = format!("https://theolee.net/static/uploads/{}", new_name);
         tracing::info!("Image uploaded successfully: {}", public_url);
         Ok(Json(UploadResponse {
@@ -487,9 +416,6 @@ pub async fn upload_image(mut multipart: Multipart) -> Result<impl IntoResponse,
     }
 }
 
-/// Verify file magic bytes to prevent uploading disguised files
-///
-/// Example: A file named "image.png" but actually contains executable code
 fn verify_image_signature(bytes: &[u8], ext: &str) -> bool {
     if bytes.len() < 4 {
         return false;
@@ -504,10 +430,6 @@ fn verify_image_signature(bytes: &[u8], ext: &str) -> bool {
     }
 }
 
-/// Sanitize HTML content to prevent XSS attacks
-///
-/// Removes dangerous tags and only allows safe HTML attributes/CSS properties.
-/// Whitelist approach: Only allows known-safe styles.
 fn secure_content(content: &str) -> String {
     let properties = HashSet::from([
         "border-collapse",

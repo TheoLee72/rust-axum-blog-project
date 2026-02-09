@@ -2,9 +2,7 @@ use super::DBClient;
 use crate::dtos::CommentDto;
 use uuid::Uuid;
 
-/// Comment database operations trait
 pub trait CommentExt {
-    /// Get paginated comments for a post with sorting
     async fn get_comments(
         &self,
         post_id: i32,
@@ -13,7 +11,6 @@ pub trait CommentExt {
         sort: &str,
     ) -> Result<Vec<CommentDto>, sqlx::Error>;
 
-    /// Create new comment on a post
     async fn create_comment(
         &self,
         user_id: Uuid,
@@ -21,7 +18,6 @@ pub trait CommentExt {
         content: &str,
     ) -> Result<CommentDto, sqlx::Error>;
 
-    /// Update comment (user must own the comment)
     async fn edit_comment(
         &self,
         user_id: Uuid,
@@ -29,13 +25,10 @@ pub trait CommentExt {
         content: &str,
     ) -> Result<CommentDto, sqlx::Error>;
 
-    /// Delete comment (user must own the comment)
     async fn delete_comment(&self, user_id: Uuid, comment_id: i32) -> Result<(), sqlx::Error>;
 
-    /// Count total comments on a post
     async fn get_post_comment_count(&self, post_id: i32) -> Result<i64, sqlx::Error>;
 
-    /// Count total comments by user
     async fn get_user_comment_count(&self, user_id: &Uuid) -> Result<i64, sqlx::Error>;
 }
 
@@ -49,16 +42,12 @@ impl CommentExt for DBClient {
     ) -> Result<Vec<CommentDto>, sqlx::Error> {
         let offset = (page - 1) * limit;
 
-        // Build ORDER BY clause based on sort parameter
-        // sort = "created_at_asc" for ascending, otherwise descending
         let order_by = if sort == "created_at_asc" {
             "r.created_at ASC"
         } else {
             "r.created_at DESC"
         };
 
-        // Use format! because sort parameter can't be used with query_as! macro
-        // (macro only supports compile-time constants)
         let query = format!(
             r#"
             SELECT r.id, u.username as "user_username", r.post_id, r.content, r.created_at, r.updated_at
@@ -87,7 +76,6 @@ impl CommentExt for DBClient {
         post_id: i32,
         content: &str,
     ) -> Result<CommentDto, sqlx::Error> {
-        // Use CTE to insert and return comment with username
         let comment = sqlx::query_as!(
             CommentDto,
             r#"
@@ -122,7 +110,6 @@ impl CommentExt for DBClient {
         comment_id: i32,
         content: &str,
     ) -> Result<CommentDto, sqlx::Error> {
-        // Update comment only if user owns it
         let comment = sqlx::query_as!(
             CommentDto,
             r#"
@@ -153,7 +140,6 @@ impl CommentExt for DBClient {
     }
 
     async fn delete_comment(&self, user_id: Uuid, comment_id: i32) -> Result<(), sqlx::Error> {
-        // Delete comment only if user owns it
         let result = sqlx::query!(
             "DELETE FROM comment WHERE id = $1 AND user_id = $2",
             comment_id,
@@ -162,7 +148,6 @@ impl CommentExt for DBClient {
         .execute(&self.pool)
         .await?;
 
-        // Return RowNotFound if comment doesn't exist or user doesn't own it
         if result.rows_affected() == 0 {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -171,7 +156,6 @@ impl CommentExt for DBClient {
     }
 
     async fn get_post_comment_count(&self, post_id: i32) -> Result<i64, sqlx::Error> {
-        // Count comments on specific post
         let count = sqlx::query_scalar!(
             r#"
             SELECT COUNT(id)
@@ -187,7 +171,6 @@ impl CommentExt for DBClient {
     }
 
     async fn get_user_comment_count(&self, user_id: &Uuid) -> Result<i64, sqlx::Error> {
-        // Count total comments by user
         let count = sqlx::query_scalar!(
             r#"
             SELECT COUNT(*)

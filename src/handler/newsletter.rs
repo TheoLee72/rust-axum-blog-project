@@ -14,25 +14,17 @@ use axum::{
 use tracing::instrument;
 use validator::Validate;
 
-/// Router for newsletter subscription endpoints
 pub fn newsletter_handler() -> Router<AppState> {
     Router::new()
-        // POST / - Subscribe to newsletter
         .route("/", post(add_newsletter_email))
-        // DELETE / - Unsubscribe from newsletter
         .route("/", delete(delete_newsletter_email))
 }
 
-/// Subscribe email to newsletter
-///
-/// Request body: { email }
-/// Returns 201 Created on success or 409 if already subscribed.
 #[instrument(skip(app_state, body), fields(email = %body.email))]
 pub async fn add_newsletter_email(
     State(app_state): State<AppState>,
     Json(body): Json<NewsletterDto>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Validate email format
     body.validate().map_err(|e| {
         tracing::error!("Invalid add_newsletter_email input: {}", e);
         HttpError::bad_request(e.to_string())
@@ -79,7 +71,6 @@ pub async fn delete_newsletter_email(
     State(app_state): State<AppState>,
     Json(body): Json<NewsletterDto>,
 ) -> Result<impl IntoResponse, HttpError> {
-    // Validate email format
     body.validate().map_err(|e| {
         tracing::error!("Invalid delete_newsletter_email input: {}", e);
         HttpError::bad_request(e.to_string())

@@ -233,7 +233,7 @@ pub async fn create_post(
                 &app_state_clone.env.llm_url,
                 &app_state_clone.env.model_name,
                 &raw_text_clone,
-                lang,
+                lang.clone(),
             )
             .await;
 
@@ -247,7 +247,7 @@ pub async fn create_post(
         if let (Ok(summary), Ok(embedding)) = (summary, embedding) {
             if let Err(e) = app_state_clone
                 .db_client
-                .update_post_summary_and_embedding(post_id, &summary, embedding)
+                .update_post_summary_and_embedding(post_id, &summary, embedding, lang)
                 .await
             {
                 tracing::error!("Failed to update post with summary and embedding: {}", e);
@@ -313,7 +313,7 @@ pub async fn edit_post(
                 &app_state.env.llm_url,
                 &app_state.env.model_name,
                 &raw_text,
-                lang,
+                lang.clone(),
             )
             .await;
 
@@ -325,7 +325,7 @@ pub async fn edit_post(
         if let (Ok(summary), Ok(embedding)) = (summary, embedding) {
             if let Err(e) = app_state
                 .db_client
-                .update_post_summary_and_embedding(post_id, &summary, embedding)
+                .update_post_summary_and_embedding(post_id, &summary, embedding, lang)
                 .await
             {
                 tracing::error!("Failed to update post with summary and embedding: {}", e);
@@ -529,6 +529,9 @@ fn secure_content(content: &str) -> String {
         "font-weight",
         "font-size",
         "max-width",
+        "display",
+        "margin-left",
+        "margin-right",
     ]);
     let secure_content = ammonia::Builder::default()
         .generic_attributes(HashSet::from(["style", "class"]))

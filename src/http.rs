@@ -99,11 +99,15 @@ impl HttpClient {
                 // - "under 100 words": Prevents overly long summaries
                 // - "main ideas, not details": Ensures summary quality
                 input: format!(
-                    "다음 글을 정확히 세 문장으로 요약하세요. 요약은 총 100단어 이내여야 합니다. 세부사항이나 예시는 제외하고 핵심 아이디어에만 집중하세요. {}",
+                    "다음 글을 정확히 세 문장으로 요약하세요. 요약은 총 100단어 이내여야 합니다. 세부사항이나 예시는 제외하고 핵심 아이디어에만 집중하세요. 꼭 한국어로 요약해주세요. {}",
                     raw_text
                 ),
             }
         };
+        println!(
+            "{}",
+            request_body.input.chars().take(100).collect::<String>()
+        );
 
         // Send POST request to LLM API with JSON body
         // .await makes this non-blocking - other requests can be processed concurrently

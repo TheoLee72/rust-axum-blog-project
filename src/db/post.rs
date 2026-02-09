@@ -70,6 +70,7 @@ pub trait PostExt {
         post_id: i32,
         summary: &str,
         embedding: Vec<f32>,
+        lang: Lang,
     ) -> Result<(), sqlx::Error>;
 }
 
@@ -399,23 +400,39 @@ impl PostExt for DBClient {
         post_id: i32,
         summary: &str,
         embedding: Vec<f32>,
+        lang: Lang,
     ) -> Result<(), sqlx::Error> {
         // Convert embedding to pgvector format
         let embedding = Vector::from(embedding);
 
         // Update summary and embedding (called after LLM and embedding service processing)
-        sqlx::query!(
-            r#"
+        if lang == Lang::En {
+            sqlx::query!(
+                r#"
             UPDATE post
             SET summary = $1, embedding = $2::vector, updated_at = NOW()
             WHERE id = $3
             "#,
-            summary,
-            embedding as _,
-            post_id
-        )
-        .execute(&self.pool)
-        .await?;
+                summary,
+                embedding as _,
+                post_id
+            )
+            .execute(&self.pool)
+            .await?;
+        } else {
+            sqlx::query!(
+                r#"
+            UPDATE post
+            SET summary_ko = $1, embedding = $2::vector, updated_at = NOW()
+            WHERE id = $3
+            "#,
+                summary,
+                embedding as _,
+                post_id
+            )
+            .execute(&self.pool)
+            .await?;
+        }
 
         Ok(())
     }
